@@ -1,0 +1,258 @@
+Metadata-Version: 2.4
+Name: kubernetes-mcp
+Version: 0.1.0
+Summary: MCP server for direct Kubernetes API access with RBAC-backed auth
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: mcp[cli]>=1.2.0
+Requires-Dist: pydantic>=2.8.0
+Requires-Dist: PyYAML>=6.0.2
+
+# Kubernetes MCP
+
+A Python MCP server that talks directly to the Kubernetes API using an RBAC-backed bearer token.
+
+## What this project includes
+
+- Direct Kubernetes API calls with `httpx`
+- MCP tools organized under a single `tools/` package
+- Resource-grouped tool files such as `pod.py`, `deployment.py`, `service.py`, and `namespace.py`
+- Clear per-tool descriptions so MCP clients can present the tools cleanly
+- MCP tools for health checks, reads, apply/update, delete, and raw requests
+- Delete guardrail controlled by `KUBE_ALLOW_DELETE`
+- Kubernetes auth auto-discovery from `KUBECONFIG` or in-cluster service account
+- Optional explicit env-var override for endpoint and bearer token
+- Custom host, port, and transport settings
+
+## Project layout
+
+```text
+Kubernetes MCP/
+├── .env.example
+├── examples/
+│   ├── rbac-editor-with-delete.yaml
+│   └── rbac-reader.yaml
+├── pyproject.toml
+├── README.md
+└── src/kubernetes_mcp/
+    ├── __init__.py
+    ├── __main__.py
+    ├── config.py
+    ├── helpers.py
+    ├── kube_api.py
+    ├── models.py
+    ├── server.py
+    └── tools/
+        ├── __init__.py
+        ├── cluster.py
+        ├── common.py
+        ├── configmap.py
+        ├── deployment.py
+        ├── generic.py
+        ├── ingress.py
+        ├── job.py
+        ├── namespace.py
+        ├── node.py
+        ├── pod.py
+        ├── register.py
+        ├── secret.py
+        └── service.py
+```
+
+## Requirements
+
+- Python 3.12+
+- Kubernetes credentials from one of these sources:
+  - `KUBECONFIG`
+  - in-cluster service account when running inside Kubernetes
+  - explicit `KUBE_API_URL` + `KUBE_BEARER_TOKEN` env vars
+
+## Environment variables
+
+Copy `.env.example` and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+Discovery order:
+
+1. Explicit `KUBE_API_URL` + `KUBE_BEARER_TOKEN`
+2. `KUBECONFIG` or `~/.kube/config`
+3. In-cluster service account (`KUBERNETES_SERVICE_HOST` + mounted token)
+
+Optional variables:
+
+- `KUBECONFIG` - override kubeconfig path
+- `KUBE_API_URL` - explicit Kubernetes API base URL
+- `KUBE_BEARER_TOKEN` - explicit bearer token
+- `KUBE_DEFAULT_NAMESPACE` - default namespace for relative paths
+- `KUBE_VERIFY_SSL` - `true` or `false` for explicit env mode
+- `KUBE_CA_CERT_PATH` - CA certificate path for explicit env mode
+- `KUBE_ALLOW_DELETE` - `true` to allow delete tool calls, otherwise deletes are blocked
+- `MCP_TRANSPORT` - `streamable-http`, `sse`, or `stdio`
+- `MCP_HOST` - bind host, default `0.0.0.0`
+- `MCP_PORT` - bind port, default `8000`
+
+## Install
+
+Using `uv`:
+
+```bash
+cd "/home/pain/Kubernetes MCP"
+uv venv
+source .venv/bin/activate
+uv sync
+```
+
+Or with pip:
+
+```bash
+cd "/home/pain/Kubernetes MCP"
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+## Run
+
+Using local `KUBECONFIG`:
+
+```bash
+export KUBECONFIG="$HOME/.kube/config"
+export MCP_PORT=9000
+python -m kubernetes_mcp --transport streamable-http --host 0.0.0.0 --port 9000
+```
+
+Using the default kubeconfig path automatically:
+
+```bash
+python -m kubernetes_mcp --transport stdio
+```
+
+Using explicit env vars:
+
+```bash
+export KUBE_API_URL="https://your-kubernetes-api:6443"
+export KUBE_BEARER_TOKEN="replace-me"
+python -m kubernetes_mcp --transport stdio
+```
+
+Running inside a pod:
+
+```bash
+python -m kubernetes_mcp --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+## Exposed MCP tools
+
+The tools are grouped by file so the project stays easy to extend:
+
+- `tools/cluster.py` - cluster health and API discovery tools
+- `tools/namespace.py` - namespace read/apply/delete tools
+- `tools/node.py` - node read/apply/delete tools
+- `tools/pod.py` - pod read/apply/delete tools
+- `tools/deployment.py` - deployment read/apply/delete tools
+- `tools/service.py` - service read/apply/delete tools
+- `tools/configmap.py` - configmap read/apply/delete tools
+- `tools/secret.py` - secret read/apply/delete tools
+- `tools/job.py` - job read/apply/delete tools
+- `tools/ingress.py` - ingress read/apply/delete tools
+- `tools/generic.py` - fallback generic resource tools and raw API access
+
+Examples:
+
+### `kube_get_pod(namespace, name?, label_selector?, field_selector?)`
+List pods in a namespace or fetch one pod by name.
+
+### `kube_apply_deployment(request)`
+Create, replace, or patch a deployment.
+
+### `kube_delete_service(request)`
+Delete a service only when `KUBE_ALLOW_DELETE=true`.
+
+### `kube_get_namespace(name?, label_selector?)`
+List namespaces or fetch one namespace.
+
+### `kube_get_configmap(namespace, name?, label_selector?)`
+List configmaps or fetch one configmap.
+
+### `kube_get_secret(namespace, name?, label_selector?)`
+List secrets or fetch one secret.
+
+### `kube_get_job(namespace, name?, label_selector?)`
+List jobs or fetch one job.
+
+### `kube_get_node(name?, label_selector?, field_selector?)`
+List cluster nodes or fetch one node.
+
+### `kube_get_ingress(namespace, name?, label_selector?)`
+List ingresses or fetch one ingress.
+
+### `kube_raw_request(request)`
+Advanced escape hatch for direct API-relative requests.
+
+Example raw request input:
+
+```json
+{
+  "method": "GET",
+  "path": "/apis/apps/v1/namespaces/default/deployments"
+}
+```
+
+## RBAC notes
+
+This server does not bypass Kubernetes permissions. It can only do what the bearer token is allowed to do.
+
+- Use `examples/rbac-reader.yaml` for read-only access
+- Use `examples/rbac-editor-with-delete.yaml` only if you intentionally want mutating access
+- Even with delete RBAC permissions, the MCP delete tool still stays blocked unless `KUBE_ALLOW_DELETE=true`
+
+## Docker
+
+Build the image:
+
+```bash
+docker build -t kubernetes-mcp .
+```
+
+Run it with mounted kubeconfig:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v "$HOME/.kube/config:/root/.kube/config:ro" \
+  -e KUBE_ALLOW_DELETE=false \
+  kubernetes-mcp
+```
+
+Run it inside Kubernetes with the pod service account:
+
+```bash
+python -m kubernetes_mcp --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+Custom port example:
+
+```bash
+docker run --rm -p 9000:9000 \
+  -v "$HOME/.kube/config:/root/.kube/config:ro" \
+  -e MCP_PORT=9000 \
+  kubernetes-mcp \
+  python -m kubernetes_mcp --transport streamable-http --host 0.0.0.0 --port 9000
+```
+
+## Current auth support notes
+
+- Works with explicit bearer token env vars
+- Works with in-cluster service account auth
+- Works with kubeconfig entries that provide a `token` or `tokenFile`
+- Does not yet implement every kubeconfig auth style such as exec plugins
+
+## Suggested next improvements
+
+- Add audit logging for every mutating request
+- Add resource-specific helper tools for pods, deployments, jobs, and logs
+- Add server-side allowlists for namespaces or resource kinds
+- Add tests with mocked Kubernetes API responses
