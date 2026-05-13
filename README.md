@@ -262,6 +262,8 @@ export MCP_API_KEY="change-me"
 export MCP_API_KEY_HEADER="x-api-key"
 ```
 
+If the server runs in Kubernetes, make sure the secret value does not gain a trailing newline during creation. This build trims trailing `\r` and `\n` from HTTP auth env vars to avoid accidental 401s from newline-terminated secrets.
+
 Client sends either:
 
 ```http
@@ -272,6 +274,12 @@ or:
 
 ```http
 Authorization: Bearer change-me
+```
+
+When testing from a shell, prefer reusing the existing env var instead of retyping the key:
+
+```bash
+curl -H "x-api-key: ${MCP_API_KEY}" ...
 ```
 
 `stdio` transport is unchanged and does not use this HTTP auth layer.

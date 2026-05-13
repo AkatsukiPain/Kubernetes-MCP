@@ -76,10 +76,10 @@ class Settings:
 
 
 def _load_endpoint_auth() -> EndpointAuth:
-    basic_auth = os.environ.get("MCP_BASIC_AUTH") or os.environ.get("BASIC_AUTH")
-    password = os.environ.get("MCP_PASSWORD") or os.environ.get("PASSWORD")
-    api_key = os.environ.get("MCP_API_KEY") or os.environ.get("API_KEY")
-    api_key_header = os.environ.get("MCP_API_KEY_HEADER", "x-api-key")
+    basic_auth = _load_http_secret("MCP_BASIC_AUTH", "BASIC_AUTH")
+    password = _load_http_secret("MCP_PASSWORD", "PASSWORD")
+    api_key = _load_http_secret("MCP_API_KEY", "API_KEY")
+    api_key_header = (os.environ.get("MCP_API_KEY_HEADER", "x-api-key") or "x-api-key").strip()
 
     configured = [bool(basic_auth), bool(password), bool(api_key)]
     if sum(configured) > 1:
@@ -92,6 +92,19 @@ def _load_endpoint_auth() -> EndpointAuth:
     if api_key:
         return EndpointAuth(mode="api_key", api_key=api_key, api_key_header=api_key_header.lower())
     return EndpointAuth()
+
+
+def _load_http_secret(primary: str, fallback: str) -> str | None:
+    value = os.environ.get(primary)
+    if value is None:
+        value = os.environ.get(fallback)
+    if value is None:
+        return None
+
+    # Kubernetes Secrets are commonly created from files or `echo` output that
+    # accidentally include a trailing newline, which would make HTTP auth fail
+    # because headers cannot carry that newline back verbatim.
+    return value.rstrip("\r\n")
 
 
 def _env_truthy(name: str) -> bool:
