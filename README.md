@@ -9,6 +9,7 @@ A Python MCP server that talks directly to the Kubernetes API using an RBAC-back
 - Resource-grouped tool files such as `pod.py`, `deployment.py`, `service.py`, and `namespace.py`
 - Clear per-tool descriptions so MCP clients can present the tools cleanly
 - MCP tools for health checks, reads, apply/update, delete, and raw requests
+- Simplified Kubernetes responses so agents see concise summaries instead of full raw API payloads
 - Delete guardrail controlled by `KUBE_ALLOW_DELETE`
 - Kubernetes auth auto-discovery from `KUBECONFIG` or in-cluster service account
 - Optional explicit env-var override for endpoint and bearer token
@@ -155,9 +156,6 @@ The tools are grouped by file so the project stays easy to extend:
 - `tools/secret.py` - secret read/apply/delete tools
 - `tools/job.py` - job read/apply/delete tools
 - `tools/ingress.py` - ingress read/apply/delete tools
-- `tools/argocd_application.py` - Argo CD Application CRD read/apply/delete tools
-- `tools/argocd_project.py` - Argo CD AppProject CRD read/apply/delete tools
-- `tools/argocd_applicationset.py` - Argo CD ApplicationSet CRD read/apply/delete tools
 - `tools/generic.py` - fallback generic resource tools and raw API access
 
 Examples:
@@ -189,15 +187,6 @@ List cluster nodes or fetch one node.
 ### `kube_get_ingress(namespace, name?, label_selector?)`
 List ingresses or fetch one ingress.
 
-### `kube_get_argocd_application(namespace, name?, label_selector?, field_selector?)`
-List Argo CD Applications or fetch one Application.
-
-### `kube_get_argocd_project(namespace, name?, label_selector?, field_selector?)`
-List Argo CD AppProjects or fetch one AppProject.
-
-### `kube_get_argocd_applicationset(namespace, name?, label_selector?, field_selector?)`
-List Argo CD ApplicationSets or fetch one ApplicationSet.
-
 ### `kube_raw_request(request)`
 Advanced escape hatch for direct API-relative requests.
 
@@ -216,7 +205,6 @@ This server does not bypass Kubernetes permissions. It can only do what the bear
 
 - Use `examples/rbac-reader.yaml` for read-only access
 - Use `examples/rbac-editor-with-delete.yaml` only if you intentionally want mutating access
-- For Argo CD CRDs, your service account also needs RBAC on `applications`, `appprojects`, and `applicationsets` in `argoproj.io`
 - Even with delete RBAC permissions, the MCP delete tool still stays blocked unless `KUBE_ALLOW_DELETE=true`
 
 ## MCP endpoint auth
@@ -325,8 +313,25 @@ docker run --rm -p 9000:9000 \
 - Works with kubeconfig entries that provide a `token` or `tokenFile`
 - Does not yet implement every kubeconfig auth style such as exec plugins
 
+## Response shaping
+
+This MCP now returns simplified JSON instead of the full raw Kubernetes object for normal tool calls.
+
+Examples of what gets trimmed or summarized:
+
+- list responses are capped to the first 20 items
+- large metadata blocks are reduced to key fields like name, namespace, labels, timestamps, and finalizers
+- workload specs are reduced to the fields agents usually need, such as replicas, selectors, ports, containers, and restart policy
+- status is reduced to high-signal fields like phase, replica readiness, IPs, and summarized conditions
+- configmaps and secrets return key names instead of full values
+
+This makes tool outputs much smaller and easier for agents to reason over.
+
+If a client still needs full fidelity for a niche case, the best next step would be adding a dedicated raw/full response mode rather than making every default response verbose again.
+
 ## Suggested next improvements
 
+- Add an optional `full_response` flag for advanced/debug workflows
 - Add audit logging for every mutating request
 - Add resource-specific helper tools for pods, deployments, jobs, and logs
 - Add server-side allowlists for namespaces or resource kinds

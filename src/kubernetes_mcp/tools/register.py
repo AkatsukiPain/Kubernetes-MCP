@@ -3,9 +3,6 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from ..kube_api import KubernetesApiClient
-from .argocd_application import register_argocd_application_tools
-from .argocd_applicationset import register_argocd_applicationset_tools
-from .argocd_project import register_argocd_project_tools
 from .cluster import register_cluster_tools
 from .configmap import register_configmap_tools
 from .deployment import register_deployment_tools
@@ -30,7 +27,4 @@ def register_tools(mcp: FastMCP, client: KubernetesApiClient) -> None:
     register_secret_tools(mcp, client)
     register_job_tools(mcp, client)
     register_ingress_tools(mcp, client)
-    register_argocd_application_tools(mcp, client)
-    register_argocd_project_tools(mcp, client)
-    register_argocd_applicationset_tools(mcp, client)
     register_generic_tools(mcp, client)
