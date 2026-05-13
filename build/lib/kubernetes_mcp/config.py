@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import base64
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import yaml
+
+from .auth import EndpointAuth
 
 IN_CLUSTER_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 IN_CLUSTER_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
@@ -25,6 +27,7 @@ class Settings:
     port: int = 8000
     transport: str = "streamable-http"
     auth_source: str = "env"
+    endpoint_auth: EndpointAuth = field(default_factory=EndpointAuth)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -46,6 +49,7 @@ class Settings:
                 port=int(os.environ.get("MCP_PORT", "8000")),
                 transport=os.environ.get("MCP_TRANSPORT", "streamable-http"),
                 auth_source="env",
+                endpoint_auth=_load_endpoint_auth(),
             )
 
         kubeconfig_settings = _load_from_kubeconfig(default_namespace=default_namespace)
@@ -54,6 +58,7 @@ class Settings:
             kubeconfig_settings.host = os.environ.get("MCP_HOST", "0.0.0.0")
             kubeconfig_settings.port = int(os.environ.get("MCP_PORT", "8000"))
             kubeconfig_settings.transport = os.environ.get("MCP_TRANSPORT", "streamable-http")
+            kubeconfig_settings.endpoint_auth = _load_endpoint_auth()
             return kubeconfig_settings
 
         incluster_settings = _load_incluster(default_namespace=default_namespace)
@@ -62,11 +67,31 @@ class Settings:
             incluster_settings.host = os.environ.get("MCP_HOST", "0.0.0.0")
             incluster_settings.port = int(os.environ.get("MCP_PORT", "8000"))
             incluster_settings.transport = os.environ.get("MCP_TRANSPORT", "streamable-http")
+            incluster_settings.endpoint_auth = _load_endpoint_auth()
             return incluster_settings
 
         raise ValueError(
             "Unable to discover Kubernetes credentials. Set KUBE_API_URL and KUBE_BEARER_TOKEN, or provide a valid KUBECONFIG, or run inside Kubernetes with a service account."
         )
+
+
+def _load_endpoint_auth() -> EndpointAuth:
+    basic_auth = os.environ.get("MCP_BASIC_AUTH") or os.environ.get("BASIC_AUTH")
+    password = os.environ.get("MCP_PASSWORD") or os.environ.get("PASSWORD")
+    api_key = os.environ.get("MCP_API_KEY") or os.environ.get("API_KEY")
+    api_key_header = os.environ.get("MCP_API_KEY_HEADER", "x-api-key")
+
+    configured = [bool(basic_auth), bool(password), bool(api_key)]
+    if sum(configured) > 1:
+        raise ValueError("Configure only one endpoint auth mode: BASIC_AUTH, PASSWORD, or API_KEY")
+
+    if basic_auth:
+        return EndpointAuth(mode="basic", basic_auth=basic_auth)
+    if password:
+        return EndpointAuth(mode="password", password=password)
+    if api_key:
+        return EndpointAuth(mode="api_key", api_key=api_key, api_key_header=api_key_header.lower())
+    return EndpointAuth()
 
 
 def _env_truthy(name: str) -> bool:

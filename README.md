@@ -12,6 +12,7 @@ A Python MCP server that talks directly to the Kubernetes API using an RBAC-back
 - Delete guardrail controlled by `KUBE_ALLOW_DELETE`
 - Kubernetes auth auto-discovery from `KUBECONFIG` or in-cluster service account
 - Optional explicit env-var override for endpoint and bearer token
+- Optional auth on the exposed MCP HTTP endpoint
 - Custom host, port, and transport settings
 
 ## Project layout
@@ -80,6 +81,10 @@ Optional variables:
 - `KUBE_VERIFY_SSL` - `true` or `false` for explicit env mode
 - `KUBE_CA_CERT_PATH` - CA certificate path for explicit env mode
 - `KUBE_ALLOW_DELETE` - `true` to allow delete tool calls, otherwise deletes are blocked
+- `MCP_BASIC_AUTH` or `BASIC_AUTH` - `username:password` for HTTP Basic auth on the MCP endpoint
+- `MCP_PASSWORD` or `PASSWORD` - shared secret accepted as `Authorization: Bearer <secret>` or `X-Mcp-Password`
+- `MCP_API_KEY` or `API_KEY` - shared API key accepted as `X-API-Key` or `Authorization: Bearer <key>`
+- `MCP_API_KEY_HEADER` - custom header name for API key mode, default `x-api-key`
 - `MCP_TRANSPORT` - `streamable-http`, `sse`, or `stdio`
 - `MCP_HOST` - bind host, default `0.0.0.0`
 - `MCP_PORT` - bind port, default `8000`
@@ -106,10 +111,11 @@ pip install -e .
 
 ## Run
 
-Using local `KUBECONFIG`:
+Using local `KUBECONFIG` with API key protection on the MCP endpoint:
 
 ```bash
 export KUBECONFIG="$HOME/.kube/config"
+export MCP_API_KEY="change-me"
 export MCP_PORT=9000
 python -m kubernetes_mcp --transport streamable-http --host 0.0.0.0 --port 9000
 ```
@@ -128,9 +134,10 @@ export KUBE_BEARER_TOKEN="replace-me"
 python -m kubernetes_mcp --transport stdio
 ```
 
-Running inside a pod:
+Running inside a pod with basic auth on the MCP endpoint:
 
 ```bash
+export MCP_BASIC_AUTH="admin:change-me"
 python -m kubernetes_mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
@@ -199,6 +206,63 @@ This server does not bypass Kubernetes permissions. It can only do what the bear
 - Use `examples/rbac-editor-with-delete.yaml` only if you intentionally want mutating access
 - Even with delete RBAC permissions, the MCP delete tool still stays blocked unless `KUBE_ALLOW_DELETE=true`
 
+## MCP endpoint auth
+
+This auth protects the exposed MCP HTTP server itself. It is separate from Kubernetes auth and RBAC.
+
+Choose exactly one mode:
+
+### Basic auth
+
+```bash
+export MCP_BASIC_AUTH="admin:change-me"
+```
+
+Client sends:
+
+```http
+Authorization: Basic <base64(username:password)>
+```
+
+### Shared password
+
+```bash
+export MCP_PASSWORD="change-me"
+```
+
+Client sends either:
+
+```http
+Authorization: Bearer change-me
+```
+
+or:
+
+```http
+X-Mcp-Password: change-me
+```
+
+### API key
+
+```bash
+export MCP_API_KEY="change-me"
+export MCP_API_KEY_HEADER="x-api-key"
+```
+
+Client sends either:
+
+```http
+X-API-Key: change-me
+```
+
+or:
+
+```http
+Authorization: Bearer change-me
+```
+
+`stdio` transport is unchanged and does not use this HTTP auth layer.
+
 ## Docker
 
 Build the image:
@@ -213,6 +277,7 @@ Run it with mounted kubeconfig:
 docker run --rm -p 8000:8000 \
   -v "$HOME/.kube/config:/root/.kube/config:ro" \
   -e KUBE_ALLOW_DELETE=false \
+  -e MCP_API_KEY="change-me" \
   kubernetes-mcp
 ```
 

@@ -2,6 +2,7 @@ README.md
 pyproject.toml
 src/kubernetes_mcp/__init__.py
 src/kubernetes_mcp/__main__.py
+src/kubernetes_mcp/auth.py
 src/kubernetes_mcp/config.py
 src/kubernetes_mcp/helpers.py
 src/kubernetes_mcp/kube_api.py
