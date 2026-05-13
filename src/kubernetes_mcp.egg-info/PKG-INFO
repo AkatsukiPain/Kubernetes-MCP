@@ -168,6 +168,9 @@ The tools are grouped by file so the project stays easy to extend:
 - `tools/secret.py` - secret read/apply/delete tools
 - `tools/job.py` - job read/apply/delete tools
 - `tools/ingress.py` - ingress read/apply/delete tools
+- `tools/argocd_application.py` - Argo CD Application CRD read/apply/delete tools
+- `tools/argocd_project.py` - Argo CD AppProject CRD read/apply/delete tools
+- `tools/argocd_applicationset.py` - Argo CD ApplicationSet CRD read/apply/delete tools
 - `tools/generic.py` - fallback generic resource tools and raw API access
 
 Examples:
@@ -199,6 +202,15 @@ List cluster nodes or fetch one node.
 ### `kube_get_ingress(namespace, name?, label_selector?)`
 List ingresses or fetch one ingress.
 
+### `kube_get_argocd_application(namespace, name?, label_selector?, field_selector?)`
+List Argo CD Applications or fetch one Application.
+
+### `kube_get_argocd_project(namespace, name?, label_selector?, field_selector?)`
+List Argo CD AppProjects or fetch one AppProject.
+
+### `kube_get_argocd_applicationset(namespace, name?, label_selector?, field_selector?)`
+List Argo CD ApplicationSets or fetch one ApplicationSet.
+
 ### `kube_raw_request(request)`
 Advanced escape hatch for direct API-relative requests.
 
@@ -217,6 +229,7 @@ This server does not bypass Kubernetes permissions. It can only do what the bear
 
 - Use `examples/rbac-reader.yaml` for read-only access
 - Use `examples/rbac-editor-with-delete.yaml` only if you intentionally want mutating access
+- For Argo CD CRDs, your service account also needs RBAC on `applications`, `appprojects`, and `applicationsets` in `argoproj.io`
 - Even with delete RBAC permissions, the MCP delete tool still stays blocked unless `KUBE_ALLOW_DELETE=true`
 
 ## MCP endpoint auth

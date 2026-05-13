@@ -15,6 +15,9 @@ src/kubernetes_mcp.egg-info/entry_points.txt
 src/kubernetes_mcp.egg-info/requires.txt
 src/kubernetes_mcp.egg-info/top_level.txt
 src/kubernetes_mcp/tools/__init__.py
+src/kubernetes_mcp/tools/argocd_application.py
+src/kubernetes_mcp/tools/argocd_applicationset.py
+src/kubernetes_mcp/tools/argocd_project.py
 src/kubernetes_mcp/tools/cluster.py
 src/kubernetes_mcp/tools/common.py
 src/kubernetes_mcp/tools/configmap.py
