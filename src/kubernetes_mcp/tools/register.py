@@ -14,6 +14,7 @@ from .node import register_node_tools
 from .pod import register_pod_tools
 from .secret import register_secret_tools
 from .service import register_service_tools
+from .statefulset import register_statefulset_tools
 
 
 def register_tools(mcp: FastMCP, client: KubernetesApiClient) -> None:
@@ -22,6 +23,7 @@ def register_tools(mcp: FastMCP, client: KubernetesApiClient) -> None:
     register_node_tools(mcp, client)
     register_pod_tools(mcp, client)
     register_deployment_tools(mcp, client)
+    register_statefulset_tools(mcp, client)
     register_service_tools(mcp, client)
     register_configmap_tools(mcp, client)
     register_secret_tools(mcp, client)
