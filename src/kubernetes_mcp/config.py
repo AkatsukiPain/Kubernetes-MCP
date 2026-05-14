@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import base64
 import os
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Literal
 
 import yaml
 
@@ -16,9 +18,52 @@ IN_CLUSTER_NAMESPACE_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/names
 
 
 @dataclass(slots=True)
+class TokenSource:
+    kind: Literal["static", "file", "exec"]
+    value: str | None = None
+    path: str | None = None
+    command: list[str] | None = None
+    env: dict[str, str] = field(default_factory=dict)
+    api_version: str | None = None
+    install_hint: str | None = None
+
+    def load_token(self) -> str:
+        if self.kind == "static":
+            return (self.value or "").strip()
+
+        if self.kind == "file":
+            if not self.path:
+                raise ValueError("Token file path is not configured")
+            return Path(self.path).expanduser().read_text(encoding="utf-8").strip()
+
+        if self.kind == "exec":
+            if not self.command:
+                raise ValueError("Exec auth command is not configured")
+
+            env = os.environ.copy()
+            env.update(self.env)
+            completed = subprocess.run(
+                self.command,
+                capture_output=True,
+                text=True,
+                check=True,
+                env=env,
+            )
+            payload = yaml.safe_load(completed.stdout) or {}
+            status = payload.get("status", {})
+            token = (status.get("token") or "").strip()
+            if not token:
+                raise ValueError("Exec auth command did not return status.token")
+            return token
+
+        raise ValueError(f"Unsupported token source kind: {self.kind}")
+
+
+@dataclass(slots=True)
 class Settings:
     kube_api_url: str
     bearer_token: str
+    token_source: TokenSource = field(default_factory=lambda: TokenSource(kind="static", value=""))
     default_namespace: str = "default"
     verify_ssl: bool = True
     ca_cert_path: str | None = None
@@ -38,9 +83,11 @@ class Settings:
         default_namespace = os.environ.get("KUBE_DEFAULT_NAMESPACE") or _read_text_if_exists(IN_CLUSTER_NAMESPACE_PATH) or "default"
 
         if explicit_url and explicit_token:
+            static_token = explicit_token.strip()
             return cls(
                 kube_api_url=explicit_url,
-                bearer_token=explicit_token,
+                bearer_token=static_token,
+                token_source=TokenSource(kind="static", value=static_token),
                 default_namespace=default_namespace,
                 verify_ssl=verify_ssl,
                 ca_cert_path=ca_cert_path,
@@ -101,9 +148,6 @@ def _load_http_secret(primary: str, fallback: str) -> str | None:
     if value is None:
         return None
 
-    # Kubernetes Secrets are commonly created from files or `echo` output that
-    # accidentally include a trailing newline, which would make HTTP auth fail
-    # because headers cannot carry that newline back verbatim.
     return value.rstrip("\r\n")
 
 
@@ -130,6 +174,7 @@ def _load_incluster(*, default_namespace: str) -> Settings | None:
     return Settings(
         kube_api_url=f"https://{host}:{port}",
         bearer_token=token,
+        token_source=TokenSource(kind="file", path=IN_CLUSTER_TOKEN_PATH),
         default_namespace=namespace,
         verify_ssl=True,
         ca_cert_path=ca_path,
@@ -155,11 +200,11 @@ def _load_from_kubeconfig(*, default_namespace: str) -> Settings | None:
     cluster = clusters.get(context.get("cluster"), {})
     user = users.get(context.get("user"), {})
     server = (cluster.get("server") or "").rstrip("/")
-    token = user.get("token")
-    if not token and user.get("tokenFile"):
-        token_path = Path(user["tokenFile"]).expanduser()
-        if token_path.exists():
-            token = token_path.read_text(encoding="utf-8").strip()
+
+    token_source = _load_kubeconfig_token_source(user)
+    if token_source is None:
+        return None
+    token = token_source.load_token()
 
     if not server or not token:
         return None
@@ -175,11 +220,43 @@ def _load_from_kubeconfig(*, default_namespace: str) -> Settings | None:
     return Settings(
         kube_api_url=server,
         bearer_token=token,
+        token_source=token_source,
         default_namespace=context.get("namespace") or default_namespace,
         verify_ssl=not insecure_skip,
         ca_cert_path=cert_path,
         auth_source="kubeconfig",
     )
+
+
+def _load_kubeconfig_token_source(user: dict) -> TokenSource | None:
+    token = (user.get("token") or "").strip()
+    if token:
+        return TokenSource(kind="static", value=token)
+
+    token_file = user.get("tokenFile")
+    if token_file:
+        token_path = Path(token_file).expanduser()
+        if token_path.exists():
+            return TokenSource(kind="file", path=str(token_path))
+
+    exec_config = user.get("exec") or {}
+    command = exec_config.get("command")
+    if command:
+        args = exec_config.get("args") or []
+        env = {
+            item.get("name"): item.get("value", "")
+            for item in (exec_config.get("env") or [])
+            if item.get("name")
+        }
+        return TokenSource(
+            kind="exec",
+            command=[command, *args],
+            env=env,
+            api_version=exec_config.get("apiVersion"),
+            install_hint=exec_config.get("installHint"),
+        )
+
+    return None
 
 
 def _write_temp_pem(content: bytes) -> str:
