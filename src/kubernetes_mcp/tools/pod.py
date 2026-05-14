@@ -11,7 +11,7 @@ from .common import apply_resource, delete_resource, get_resource, get_resource_
 
 
 def register_pod_tools(mcp: FastMCP, client: KubernetesApiClient) -> None:
-    @mcp.tool(description="List pods in a namespace, or get one pod by name, using the Kubernetes API with the current RBAC identity.")
+    @mcp.tool(description="Full-detail pod reader. Prefer kube_get_pod_summary first for low-token scanning, then kube_get_unhealthy_pod when troubleshooting unhealthy pods.")
     async def kube_get_pod(
         namespace: str = Field(description="Target namespace, for example default."),
         name: str | None = Field(default=None, description="Optional pod name. Omit it to list pods."),
@@ -28,7 +28,7 @@ def register_pod_tools(mcp: FastMCP, client: KubernetesApiClient) -> None:
             field_selector=field_selector,
         )
 
-    @mcp.tool(description="Return a compact pod summary list with phase, readiness, and restart counts to reduce token usage.")
+    @mcp.tool(description="Preferred first step for pod checks. Returns a compact low-token summary with readiness, normalized status, restart count, and compact reason when present.")
     async def kube_get_pod_summary(
         namespace: str = Field(description="Target namespace, for example default."),
         name: str | None = Field(default=None, description="Optional pod name. Omit it to summarize pods in the namespace."),
@@ -48,7 +48,7 @@ def register_pod_tools(mcp: FastMCP, client: KubernetesApiClient) -> None:
             summarize_item=_summarize_pod,
         )
 
-    @mcp.tool(description="Return focused details for unhealthy pods only, so callers get useful diagnostics with much lower token cost.")
+    @mcp.tool(description="Preferred troubleshooting follow-up after kube_get_pod_summary. Returns focused diagnostics only for unhealthy pods with much lower token cost than the full reader.")
     async def kube_get_unhealthy_pod(
         namespace: str = Field(description="Target namespace, for example default."),
         name: str | None = Field(default=None, description="Optional pod name. Omit it to scan pods in the namespace."),
@@ -94,7 +94,7 @@ def register_pod_tools(mcp: FastMCP, client: KubernetesApiClient) -> None:
             grace_period_seconds=request.grace_period_seconds,
         )
 
-    @mcp.tool(description="Generic pod reader that accepts the shared ResourceQuery model for advanced filtering and consistent automation.")
+    @mcp.tool(description="Advanced full-detail pod reader for consistent automation. Prefer kube_get_pod_summary first, then kube_get_unhealthy_pod for troubleshooting.")
     async def kube_get_pod_advanced(query: ResourceQuery) -> str:
         return await get_resource(
             client,

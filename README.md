@@ -10,6 +10,8 @@ A Python MCP server that talks directly to the Kubernetes API using an RBAC-back
 - Clear per-tool descriptions so MCP clients can present the tools cleanly
 - MCP tools for health checks, reads, apply/update, delete, and raw requests
 - Simplified Kubernetes responses so agents see concise summaries instead of full raw API payloads
+- Low-token summary tools for fast first-pass health scans
+- Focused unhealthy-only tools for second-pass troubleshooting
 - Delete guardrail controlled by `KUBE_ALLOW_DELETE`
 - Kubernetes auth auto-discovery from `KUBECONFIG` or in-cluster service account
 - Optional explicit env-var override for endpoint and bearer token
@@ -48,7 +50,8 @@ Kubernetes MCP/
         ├── pod.py
         ├── register.py
         ├── secret.py
-        └── service.py
+        ├── service.py
+        └── statefulset.py
 ```
 
 ## Requirements
@@ -152,16 +155,56 @@ The tools are grouped by file so the project stays easy to extend:
 - `tools/pod.py` - pod read/apply/delete tools
 - `tools/deployment.py` - deployment read/apply/delete tools
 - `tools/service.py` - service read/apply/delete tools
+- `tools/statefulset.py` - statefulset read/apply/delete tools
 - `tools/configmap.py` - configmap read/apply/delete tools
 - `tools/secret.py` - secret read/apply/delete tools
 - `tools/job.py` - job read/apply/delete tools
 - `tools/ingress.py` - ingress read/apply/delete tools
 - `tools/generic.py` - fallback generic resource tools and raw API access
 
+## Recommended agent workflow
+
+To reduce token usage and make agent behavior more reliable, prefer this call order for supported resources:
+
+1. `*_summary(...)` first for broad scanning
+2. `kube_get_unhealthy_*(...)` next when the summary shows unhealthy resources or the user asks to troubleshoot
+3. full-detail `kube_get_*(...)` only when raw resource structure is still needed
+
+Current resources with this pattern:
+
+- pods
+- deployments
+- statefulsets
+
+Why this helps:
+
+- summary tools keep the first pass compact, so the model is less likely to lose context in long troubleshooting turns
+- unhealthy tools return targeted diagnostics without flooding the context window
+- full-detail readers stay available as a fallback instead of being the default path
+
+Reliability tips for MCP clients and agent prompts:
+
+- Prefer summary tools first when multiple resource-reader tools are available
+- If a summary result shows `status != Healthy`, call the matching unhealthy tool before the full-detail reader
+- Always return a short user-facing response even if a follow-up troubleshooting call fails or times out
+- Keep responses incremental during multi-step debugging instead of waiting for the whole investigation to finish
+
 Examples:
 
+### `kube_get_pod_summary(namespace, name?, label_selector?, field_selector?, limit?)`
+Preferred first-pass pod check. Returns compact readiness, normalized status, restart count, and compact reason when present.
+
+### `kube_get_unhealthy_pod(namespace, name?, label_selector?, field_selector?, limit?)`
+Preferred second-pass pod troubleshooting tool. Returns focused diagnostics only for unhealthy pods.
+
 ### `kube_get_pod(namespace, name?, label_selector?, field_selector?)`
-List pods in a namespace or fetch one pod by name.
+Full-detail pod reader. Use when the summary and unhealthy tools are not enough.
+
+### `kube_get_deployment_summary(namespace, name?, label_selector?, limit?)`
+Preferred first-pass deployment check. Returns compact readiness, normalized status, and compact reason when present.
+
+### `kube_get_unhealthy_deployment(namespace, name?, label_selector?, limit?)`
+Preferred second-pass deployment troubleshooting tool. Returns focused diagnostics only for unhealthy deployments.
 
 ### `kube_apply_deployment(request)`
 Create, replace, or patch a deployment.
@@ -177,6 +220,12 @@ List configmaps or fetch one configmap.
 
 ### `kube_get_secret(namespace, name?, label_selector?)`
 List secrets or fetch one secret.
+
+### `kube_get_statefulset_summary(namespace, name?, label_selector?, limit?)`
+Preferred first-pass statefulset check. Returns compact readiness, normalized status, and compact reason when present.
+
+### `kube_get_unhealthy_statefulset(namespace, name?, label_selector?, limit?)`
+Preferred second-pass statefulset troubleshooting tool. Returns focused diagnostics only for unhealthy statefulsets.
 
 ### `kube_get_job(namespace, name?, label_selector?)`
 List jobs or fetch one job.

@@ -11,7 +11,7 @@ from .common import apply_resource, delete_resource, get_resource, get_resource_
 
 
 def register_statefulset_tools(mcp: FastMCP, client: KubernetesApiClient) -> None:
-    @mcp.tool(description="List statefulsets in a namespace, or get one statefulset by name, through the apps/v1 Kubernetes API.")
+    @mcp.tool(description="Full-detail statefulset reader. Prefer kube_get_statefulset_summary first for low-token scanning, then kube_get_unhealthy_statefulset when troubleshooting unhealthy statefulsets.")
     async def kube_get_statefulset(
         namespace: str = Field(description="Target namespace, for example default."),
         name: str | None = Field(default=None, description="Optional statefulset name. Omit it to list statefulsets."),
@@ -26,7 +26,7 @@ def register_statefulset_tools(mcp: FastMCP, client: KubernetesApiClient) -> Non
             label_selector=label_selector,
         )
 
-    @mcp.tool(description="Return a compact statefulset summary list with readiness and high-level status to reduce token usage.")
+    @mcp.tool(description="Preferred first step for statefulset checks. Returns a compact low-token summary with readiness, normalized status, and compact reason when present.")
     async def kube_get_statefulset_summary(
         namespace: str = Field(description="Target namespace, for example default."),
         name: str | None = Field(default=None, description="Optional statefulset name. Omit it to summarize statefulsets in the namespace."),
@@ -44,7 +44,7 @@ def register_statefulset_tools(mcp: FastMCP, client: KubernetesApiClient) -> Non
             summarize_item=_summarize_statefulset,
         )
 
-    @mcp.tool(description="Return focused details for unhealthy statefulsets only, so callers get useful diagnostics with much lower token cost.")
+    @mcp.tool(description="Preferred troubleshooting follow-up after kube_get_statefulset_summary. Returns focused diagnostics only for unhealthy statefulsets with much lower token cost than the full reader.")
     async def kube_get_unhealthy_statefulset(
         namespace: str = Field(description="Target namespace, for example default."),
         name: str | None = Field(default=None, description="Optional statefulset name. Omit it to scan statefulsets in the namespace."),
@@ -88,7 +88,7 @@ def register_statefulset_tools(mcp: FastMCP, client: KubernetesApiClient) -> Non
             grace_period_seconds=request.grace_period_seconds,
         )
 
-    @mcp.tool(description="Generic statefulset reader that accepts the shared ResourceQuery model for advanced filtering and consistent automation.")
+    @mcp.tool(description="Advanced full-detail statefulset reader for consistent automation. Prefer kube_get_statefulset_summary first, then kube_get_unhealthy_statefulset for troubleshooting.")
     async def kube_get_statefulset_advanced(query: ResourceQuery) -> str:
         return await get_resource(
             client,
