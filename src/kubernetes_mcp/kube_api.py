@@ -122,6 +122,34 @@ class KubernetesApiClient:
         params: dict[str, str] | None = None,
         body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        response = await self.request_response(method, path, namespace=namespace, params=params, body=body)
+
+        if not response.content:
+            return {"status": "ok"}
+
+        return response.json()
+
+    async def request_text(
+        self,
+        method: str,
+        path: str,
+        *,
+        namespace: str | None = None,
+        params: dict[str, str] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> str:
+        response = await self.request_response(method, path, namespace=namespace, params=params, body=body)
+        return response.text
+
+    async def request_response(
+        self,
+        method: str,
+        path: str,
+        *,
+        namespace: str | None = None,
+        params: dict[str, str] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> httpx.Response:
         if method.upper() == "DELETE" and not self._settings.allow_delete:
             raise DeleteDisabledError(
                 "DELETE operations are disabled. Set KUBE_ALLOW_DELETE=true to enable them."
@@ -140,10 +168,7 @@ class KubernetesApiClient:
                 f"Kubernetes API error {response.status_code} for {resolved_path}: {response.text}"
             )
 
-        if not response.content:
-            return {"status": "ok"}
-
-        return response.json()
+        return response
 
     def _resolve_path(self, *, path: str, namespace: str | None) -> str:
         raw_path = path.strip()

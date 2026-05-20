@@ -206,6 +206,9 @@ Preferred first-pass deployment check. Returns compact readiness, normalized sta
 ### `kube_get_unhealthy_deployment(namespace, name?, label_selector?, limit?)`
 Preferred second-pass deployment troubleshooting tool. Returns focused diagnostics only for unhealthy deployments.
 
+### `kube_get_deployment_logs(namespace, name, container?, tail_lines?, since_seconds?, previous?, pod_limit?, timestamps?)`
+Troubleshooting helper that resolves the deployment selector to matching pods and returns recent pod logs for that deployment. It prioritizes unhealthy, not-ready, and restarted pods first so troubleshooting focuses on the most suspicious replicas before healthy ones.
+
 ### `kube_apply_deployment(request)`
 Create, replace, or patch a deployment.
 
@@ -382,6 +385,6 @@ If a client still needs full fidelity for a niche case, the best next step would
 
 - Add an optional `full_response` flag for advanced/debug workflows
 - Add audit logging for every mutating request
-- Add resource-specific helper tools for pods, deployments, jobs, and logs
+- Add more resource-specific helper tools for pods, deployments, jobs, and logs
 - Add server-side allowlists for namespaces or resource kinds
 - Add tests with mocked Kubernetes API responses
