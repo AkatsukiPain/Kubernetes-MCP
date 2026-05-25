@@ -8,6 +8,12 @@ from .kube_api import DeleteDisabledError, KubernetesApiClient, KubernetesApiErr
 RESOURCE_LIST_LIMIT = 20
 
 
+def compact_json(data: Any, *, compact: bool = True) -> str:
+    if compact:
+        return json.dumps(data, separators=(",", ":"))
+    return json.dumps(data, indent=2)
+
+
 def build_resource_path(api_version: str, kind_plural: str, namespace: str | None, name: str | None) -> str:
     if "/" in api_version:
         group, version = api_version.split("/", 1)
@@ -140,10 +146,10 @@ def _clean_status(status: dict[str, Any] | None) -> dict[str, Any] | None:
     return cleaned or None
 
 
-def simplify_kubernetes_response(result: dict[str, Any]) -> dict[str, Any]:
+def simplify_kubernetes_response(result: dict[str, Any], *, list_limit: int = RESOURCE_LIST_LIMIT) -> dict[str, Any]:
     items = result.get("items")
     if isinstance(items, list):
-        simplified_items = [simplify_kubernetes_response(item) for item in items[:RESOURCE_LIST_LIMIT]]
+        simplified_items = [simplify_kubernetes_response(item, list_limit=list_limit) for item in items[:list_limit]]
         names = [
             item.get("metadata", {}).get("name")
             for item in simplified_items
@@ -190,8 +196,11 @@ async def safe_request(client: KubernetesApiClient, method: str, path: str, **kw
     try:
         result = await client.request(method, path, **kwargs)
     except DeleteDisabledError as exc:
-        return json.dumps({"error": str(exc), "allow_delete": False}, indent=2)
+        return compact_json({"error": str(exc), "allow_delete": False}, compact=client._settings.compact_json)
     except (KubernetesApiError, ValueError) as exc:
-        return json.dumps({"error": str(exc)}, indent=2)
+        return compact_json({"error": str(exc)}, compact=client._settings.compact_json)
 
-    return json.dumps(simplify_kubernetes_response(result), indent=2)
+    return compact_json(
+        simplify_kubernetes_response(result, list_limit=client._settings.resource_list_limit),
+        compact=client._settings.compact_json,
+    )

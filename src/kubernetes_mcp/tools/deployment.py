@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
+from ..helpers import compact_json
 from ..kube_api import KubernetesApiClient, KubernetesApiError
 from ..models import ApplyRequest, DeleteRequest, ResourceQuery
 from .common import apply_resource, delete_resource, get_resource, get_resource_summary, get_unhealthy_resources, resource_path
@@ -70,39 +70,42 @@ def register_deployment_tools(mcp: FastMCP, client: KubernetesApiClient) -> None
         namespace: str = Field(description="Target namespace, for example default."),
         name: str = Field(description="Deployment name."),
         container: str | None = Field(default=None, description="Optional container name. Omit it to collect logs from all normal containers in each matched pod."),
-        tail_lines: int = Field(default=200, ge=1, le=2000, description="Maximum recent log lines to return per container."),
+        tail_lines: int | None = Field(default=None, ge=1, le=2000, description="Maximum recent log lines to return per container. Defaults to KUBE_MCP_LOG_TAIL_LINES or 80."),
         since_seconds: int | None = Field(default=3600, ge=1, le=604800, description="Optional time window in seconds for each log request. Default is the last hour."),
         previous: bool = Field(default=False, description="When true, fetch logs from the previous container instance after a restart or crash."),
-        pod_limit: int = Field(default=5, ge=1, le=20, description="Maximum number of matching pods to collect logs from."),
-        timestamps: bool = Field(default=True, description="When true, include Kubernetes log timestamps."),
+        pod_limit: int | None = Field(default=None, ge=1, le=20, description="Maximum number of matching pods to collect logs from. Defaults to KUBE_MCP_LOG_POD_LIMIT or 3."),
+        timestamps: bool | None = Field(default=None, description="When true, include Kubernetes log timestamps. Defaults to KUBE_MCP_LOG_TIMESTAMPS or false."),
     ) -> str:
+        resolved_tail_lines = tail_lines or client._settings.log_tail_lines
+        resolved_pod_limit = pod_limit or client._settings.log_pod_limit
+        resolved_timestamps = client._settings.log_timestamps if timestamps is None else timestamps
         deployment_path = resource_path(api_version="apps/v1", kind_plural="deployments", namespace=namespace, name=name)
 
         try:
             deployment = await client.request("GET", deployment_path)
         except (KubernetesApiError, ValueError) as exc:
-            return json.dumps({"error": str(exc)}, indent=2)
+            return compact_json({"error": str(exc)}, compact=client._settings.compact_json)
 
         selector = _deployment_label_selector(deployment)
         if not selector:
-            return json.dumps(
+            return compact_json(
                 {
                     "error": f"Deployment {namespace}/{name} does not expose a supported spec.selector for log collection."
                 },
-                indent=2,
+                compact=client._settings.compact_json,
             )
 
         pods_path = resource_path(api_version="v1", kind_plural="pods", namespace=namespace)
         try:
             pod_list = await client.request("GET", pods_path, params={"labelSelector": selector})
         except (KubernetesApiError, ValueError) as exc:
-            return json.dumps({"error": str(exc)}, indent=2)
+            return compact_json({"error": str(exc)}, compact=client._settings.compact_json)
 
         pods = sorted(
             pod_list.get("items") or [],
             key=_deployment_log_pod_sort_key,
         )
-        selected_pods = pods[:pod_limit]
+        selected_pods = pods[:resolved_pod_limit]
 
         items = []
         for pod in selected_pods:
@@ -136,13 +139,13 @@ def register_deployment_tools(mcp: FastMCP, client: KubernetesApiClient) -> None
             for container_name in container_names:
                 log_params = {
                     "container": container_name,
-                    "tailLines": str(tail_lines),
+                    "tailLines": str(resolved_tail_lines),
                 }
                 if since_seconds is not None:
                     log_params["sinceSeconds"] = str(since_seconds)
                 if previous:
                     log_params["previous"] = "true"
-                if timestamps:
+                if resolved_timestamps:
                     log_params["timestamps"] = "true"
 
                 try:
@@ -167,7 +170,7 @@ def register_deployment_tools(mcp: FastMCP, client: KubernetesApiClient) -> None
 
             items.append(pod_entry)
 
-        return json.dumps(
+        return compact_json(
             {
                 "namespace": namespace,
                 "deployment": name,
@@ -176,14 +179,14 @@ def register_deployment_tools(mcp: FastMCP, client: KubernetesApiClient) -> None
                     "podsMatched": len(pods),
                     "podsReturned": len(items),
                     "container": container,
-                    "tailLines": tail_lines,
+                    "tailLines": resolved_tail_lines,
                     "sinceSeconds": since_seconds,
                     "previous": previous,
-                    "timestamps": timestamps,
+                    "timestamps": resolved_timestamps,
                 },
                 "items": items,
             },
-            indent=2,
+            compact=client._settings.compact_json,
         )
 
     @mcp.tool(description="Create a deployment, replace a deployment, or patch an existing deployment in a namespace.")

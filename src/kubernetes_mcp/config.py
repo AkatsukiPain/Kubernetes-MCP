@@ -39,6 +39,11 @@ class Settings:
     verify_ssl: bool = True
     ca_cert_path: str | None = None
     allow_delete: bool = False
+    compact_json: bool = True
+    resource_list_limit: int = 20
+    log_tail_lines: int = 80
+    log_pod_limit: int = 3
+    log_timestamps: bool = False
     host: str = "0.0.0.0"
     port: int = 8000
     transport: str = "streamable-http"
@@ -52,6 +57,11 @@ class Settings:
         incluster_settings = _load_incluster(default_namespace=default_namespace)
         if incluster_settings is not None:
             incluster_settings.allow_delete = _env_truthy("KUBE_ALLOW_DELETE")
+            incluster_settings.compact_json = _env_truthy("KUBE_MCP_COMPACT_JSON", default=True)
+            incluster_settings.resource_list_limit = _env_int("KUBE_MCP_RESOURCE_LIST_LIMIT", 20, minimum=1)
+            incluster_settings.log_tail_lines = _env_int("KUBE_MCP_LOG_TAIL_LINES", 80, minimum=1)
+            incluster_settings.log_pod_limit = _env_int("KUBE_MCP_LOG_POD_LIMIT", 3, minimum=1)
+            incluster_settings.log_timestamps = _env_truthy("KUBE_MCP_LOG_TIMESTAMPS")
             incluster_settings.host = os.environ.get("MCP_HOST", "0.0.0.0")
             incluster_settings.port = int(os.environ.get("MCP_PORT", "8000"))
             incluster_settings.transport = os.environ.get("MCP_TRANSPORT", "streamable-http")
@@ -73,6 +83,11 @@ class Settings:
                 verify_ssl=verify_ssl,
                 ca_cert_path=ca_cert_path,
                 allow_delete=_env_truthy("KUBE_ALLOW_DELETE"),
+                compact_json=_env_truthy("KUBE_MCP_COMPACT_JSON", default=True),
+                resource_list_limit=_env_int("KUBE_MCP_RESOURCE_LIST_LIMIT", 20, minimum=1),
+                log_tail_lines=_env_int("KUBE_MCP_LOG_TAIL_LINES", 80, minimum=1),
+                log_pod_limit=_env_int("KUBE_MCP_LOG_POD_LIMIT", 3, minimum=1),
+                log_timestamps=_env_truthy("KUBE_MCP_LOG_TIMESTAMPS"),
                 host=os.environ.get("MCP_HOST", "0.0.0.0"),
                 port=int(os.environ.get("MCP_PORT", "8000")),
                 transport=os.environ.get("MCP_TRANSPORT", "streamable-http"),
@@ -114,8 +129,26 @@ def _load_http_secret(primary: str, fallback: str) -> str | None:
     return value.rstrip("\r\n")
 
 
-def _env_truthy(name: str) -> bool:
-    return os.environ.get(name, "false").lower() in {"1", "true", "yes"}
+def _env_truthy(name: str, *, default: bool = False) -> bool:
+    fallback = "true" if default else "false"
+    return os.environ.get(name, fallback).lower() in {"1", "true", "yes"}
+
+
+def _env_int(name: str, default: int, *, minimum: int | None = None, maximum: int | None = None) -> int:
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        value = default
+    else:
+        try:
+            value = int(raw_value)
+        except ValueError as exc:
+            raise ValueError(f"{name} must be an integer") from exc
+
+    if minimum is not None:
+        value = max(value, minimum)
+    if maximum is not None:
+        value = min(value, maximum)
+    return value
 
 
 def _read_text_if_exists(path: str) -> str | None:

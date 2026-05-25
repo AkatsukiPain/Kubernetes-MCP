@@ -85,6 +85,11 @@ Optional variables:
 - `KUBE_VERIFY_SSL` - `true` or `false` for explicit env mode
 - `KUBE_CA_CERT_PATH` - CA certificate path for explicit env mode
 - `KUBE_ALLOW_DELETE` - `true` to allow delete tool calls, otherwise deletes are blocked
+- `KUBE_MCP_COMPACT_JSON` - compact tool responses by default, set `false` for pretty JSON
+- `KUBE_MCP_RESOURCE_LIST_LIMIT` - max items returned by full resource list responses, default `20`
+- `KUBE_MCP_LOG_TAIL_LINES` - default recent log lines per container for deployment logs, default `80`
+- `KUBE_MCP_LOG_POD_LIMIT` - default max pods to collect deployment logs from, default `3`
+- `KUBE_MCP_LOG_TIMESTAMPS` - include Kubernetes log timestamps by default when `true`, default `false`
 - `MCP_BASIC_AUTH` or `BASIC_AUTH` - `username:password` for HTTP Basic auth on the MCP endpoint
 - `MCP_PASSWORD` or `PASSWORD` - shared secret accepted as `Authorization: Bearer <secret>` or `X-Mcp-Password`
 - `MCP_API_KEY` or `API_KEY` - shared API key accepted as `X-API-Key` or `Authorization: Bearer <key>`

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Callable
 
-from ..helpers import build_resource_path, safe_request
+from ..helpers import build_resource_path, compact_json, safe_request
 from ..kube_api import DeleteDisabledError, KubernetesApiClient, KubernetesApiError
 
 SummaryBuilder = Callable[[dict[str, Any]], dict[str, Any]]
@@ -101,18 +100,18 @@ async def get_resource_summary(
         return result
 
     if name:
-        return json.dumps(
+        return compact_json(
             {
                 "apiVersion": result.get("apiVersion"),
                 "kind": result.get("kind"),
                 "item": summarize_item(result),
             },
-            indent=2,
+            compact=client._settings.compact_json,
         )
 
     items = result.get("items") or []
     summaries = [summarize_item(item) for item in items[:limit]]
-    return json.dumps(
+    return compact_json(
         {
             "apiVersion": result.get("apiVersion"),
             "kind": result.get("kind"),
@@ -123,7 +122,7 @@ async def get_resource_summary(
             },
             "items": summaries,
         },
-        indent=2,
+        compact=client._settings.compact_json,
     )
 
 
@@ -158,20 +157,20 @@ async def get_unhealthy_resources(
 
     if name:
         unhealthy = is_unhealthy(result)
-        return json.dumps(
+        return compact_json(
             {
                 "apiVersion": result.get("apiVersion"),
                 "kind": result.get("kind"),
                 "healthy": not unhealthy,
                 "item": detail_item(result),
             },
-            indent=2,
+            compact=client._settings.compact_json,
         )
 
     items = result.get("items") or []
     unhealthy_items = [item for item in items if is_unhealthy(item)]
     details = [detail_item(item) for item in unhealthy_items[:limit]]
-    return json.dumps(
+    return compact_json(
         {
             "apiVersion": result.get("apiVersion"),
             "kind": result.get("kind"),
@@ -183,7 +182,7 @@ async def get_unhealthy_resources(
             },
             "items": details,
         },
-        indent=2,
+        compact=client._settings.compact_json,
     )
 
 
@@ -210,10 +209,10 @@ async def _fetch_resource(
     try:
         return await client.request("GET", path, params=params or None)
     except DeleteDisabledError as exc:
-        return json.dumps({"error": str(exc), "allow_delete": False}, indent=2)
+        return compact_json({"error": str(exc), "allow_delete": False}, compact=client._settings.compact_json)
     except (KubernetesApiError, ValueError) as exc:
-        return json.dumps({"error": str(exc)}, indent=2)
+        return compact_json({"error": str(exc)}, compact=client._settings.compact_json)
 
 
 def _error_response(message: str) -> str:
-    return json.dumps({"error": message}, indent=2)
+    return compact_json({"error": message})
